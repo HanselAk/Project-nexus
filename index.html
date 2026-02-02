@@ -722,18 +722,14 @@
         <div class="main-grid">
             <div class="card">
                 <h2>⚙ Configuration</h2>
-                <div class="form-group">
-    <label for="backendUrl">Backend URL</label>
-    <input type="text" id="backendUrl" placeholder="nexusapi2-nn8egftng-hanselaks-projects.vercel.appp">
-    <div class="label-hint" style="margin-top:0.5rem;">Tip: You can leave this blank after you paste your Vercel URL into the code.</div>
-</div>
+                
                 <div class="form-group">
                     <label for="model">AI Model</label>
                     <select id="model">
-    <option value="gpt-4.1-mini" selected>GPT-4.1 mini (recommended)</option>
-    <option value="gpt-4.1">GPT-4.1</option>
-    <option value="gpt-4o-mini">GPT-4o mini</option>
-</select>
+                        <option value="gpt-4.1-mini" selected>GPT-4.1 Mini (Recommended)</option>
+                        <option value="gpt-4.1">GPT-4.1</option>
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    </select>
                 </div>
             </div>
 
@@ -1102,13 +1098,6 @@
 
         // Main Generation Function
         document.getElementById('generateBtn').addEventListener('click', async function() {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            
-            if (!apiKey) {
-                alert('⚠️ SYSTEM ERROR: API KEY REQUIRED');
-                return;
-            }
-
             // Collect all parameters
             const params = {
                 model: document.getElementById('model').value,
@@ -1219,18 +1208,17 @@
             document.getElementById('results').classList.remove('active');
 
             try {
-                const response = await fetch(`${BACKEND_BASE}/api/generate-ideas`, {
+                const response = await fetch('/.netlify/functions/generate-ideas', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         model: params.model,
-                        prompt,
-                        technologies,
-                        params
+                        prompt: prompt
                     })
                 });
-
-                if (!response.ok) {
+if (!response.ok) {
                     const error = await response.json();
                     throw new Error(error.error?.message || `API Error: ${response.status}`);
                 }
