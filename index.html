@@ -1208,26 +1208,49 @@
             document.getElementById('results').classList.remove('active');
 
             try {
-                const response = await fetch('/.netlify/functions/generate-ideas', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: params.model,
-                        prompt: prompt
-                    })
-                });
-if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error?.message || `API Error: ${response.status}`);
-                }
+                 const response = await fetch('/.netlify/functions/generate-ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            model: params.model,
+            prompt: prompt
+        })
+    });
 
-                const data = await response.json();
-                const content = data.ideasText;
+    // Read raw text first (prevents JSON errors + lets us see real errors)
+    const raw = await response.text();
 
-                // Display results
-                displayResults(content, technologies, params);
+    if (!response.ok) {
+        // Try to parse JSON error, otherwise show raw
+        let errMsg = raw;
+        try {
+            const errJson = JSON.parse(raw);
+            errMsg =
+                (typeof errJson?.error === 'string' && errJson.error) ||
+                errJson?.error?.message ||
+                errJson?.message ||
+                raw;
+        } catch (_) {
+            // raw is not JSON; keep it
+        }
+        throw new Error(`API Error ${response.status}: ${errMsg}`);
+    }
+
+    // Parse success JSON
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (e) {
+        throw new Error(`Server returned non-JSON: ${raw.slice(0, 120)}...`);
+    }
+
+    const content = (data.ideasText || "").trim();
+    if (!content) {
+        throw new Error("API returned empty ideasText (no content).");
+    }
+
+    // Display results
+    displayResults(content, technologies, params);
 
             } catch (error) {
                 alert('⚠️ ERROR: ' + error.message);
