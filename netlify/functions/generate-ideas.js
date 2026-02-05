@@ -38,7 +38,7 @@ exports.handler = async (event) => {
         model,
         input: prompt,
         temperature: 0.7,
-        max_output_tokens: 1200,
+        max_output_tokens: 1400,
       }),
     });
 
@@ -50,43 +50,24 @@ exports.handler = async (event) => {
       return { statusCode: r.status, headers, body: JSON.stringify({ error: data }) };
     }
 
-    // ✅ Robust text extraction for Responses API
     let text = "";
 
-    // 1) Some SDKs provide output_text, but not always
-    if (typeof data.output_text === "string") {
-      text = data.output_text;
-    }
+    if (typeof data.output_text === "string") text = data.output_text;
 
-    // 2) Otherwise pull from output blocks
     if (!text && Array.isArray(data.output)) {
       const chunks = [];
       for (const item of data.output) {
-        // item.content is often an array of {type:"output_text", text:"..."}
         if (Array.isArray(item.content)) {
           for (const c of item.content) {
             if (c && typeof c.text === "string") chunks.push(c.text);
           }
         }
-        // Sometimes text appears at item.text
         if (item && typeof item.text === "string") chunks.push(item.text);
       }
       text = chunks.join("\n").trim();
     }
 
-    // 3) Last resort: stringify so we can see what's coming back
-    if (!text) {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({
-          ideasText: "",
-          debug: { note: "No text found in response", rawKeys: Object.keys(data || {}) }
-        }),
-      };
-    }
-
-    return { statusCode: 200, headers, body: JSON.stringify({ ideasText: text }) };
+    return { statusCode: 200, headers, body: JSON.stringify({ ideasText: text || "" }) };
   } catch (e) {
     return { statusCode: 500, headers, body: JSON.stringify({ error: String(e) }) };
   }
