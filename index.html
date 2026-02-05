@@ -1288,7 +1288,8 @@
                 count: document.getElementById('count').value,
                 detailLevel: document.getElementById('detailLevel').value,
                 includeExtras: document.getElementById('includeExtras').checked,
-                generateImages: document.getElementById('generateImages').checked
+                generateImages: document.getElementById('generateImages') ? document.getElementById('generateImages').checked : false
+
             };
 
             // Get selected technologies
@@ -1590,7 +1591,21 @@
             html += '</div></div>';
             resultsDiv.innerHTML = html;
             resultsDiv.classList.add('active');
-            
+            // If user checked "Generate AI images", call backend image function for each project
+if (params && params.generateImages) {
+      projects.forEach((project, index) => {
+    // Try to extract title from the text for better prompts
+    const titleMatch =
+      project.match(/\*\*Title[:\s]*\*\*[:\s]*(.+?)(?:\n|$)/i) ||
+      project.match(/\*\*(.+?)\*\*/);
+
+    const title = titleMatch ? String(titleMatch[1]).replace(/[:#*]/g, '').trim() : `Project ${index + 1}`;
+
+    const imagePrompt = `Clean, futuristic UI-style concept art for a senior design project called "${title}". Neon cyberpunk dashboard aesthetic, high contrast, no text.`;
+    generateProjectImage(index, imagePrompt, title);
+  });
+}
+
             // Scroll to results
             resultsDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
