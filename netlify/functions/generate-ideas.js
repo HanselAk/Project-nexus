@@ -4,7 +4,7 @@ const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 // Netlify Functions often time out if the upstream call is slow.
 // We'll enforce our own timeout so we can return JSON instead of Netlify returning HTML.
-const UPSTREAM_TIMEOUT_MS = 8000; // 8s (stay under Netlify kill window)
+const UPSTREAM_TIMEOUT_MS = 6500 ; // 8s (stay under Netlify kill window)
 
 function json(statusCode, body) {
   return {
@@ -61,35 +61,45 @@ exports.handler = async (event) => {
       return json(400, { error: { message: "Invalid JSON body." } });
     }
 
-    // Your frontend sends: { model, prompt }
-    const model = body.model || "gpt-4.1-mini";
 
-    // IMPORTANT: keep prompt size under control (huge prompts slow responses)
-    let prompt = String(body.prompt || "").trim();
-    if (!prompt) return json(400, { error: { message: "Missing prompt." } });
 
-    // Hard cap prompt length to avoid timeouts (you can adjust if needed)
-    if (prompt.length > 12000) prompt = prompt.slice(0, 12000);
 
-    // IMPORTANT: keep output tokens lower so it finishes before Netlify times out
-    const payload = {
-      model,
-      input: [
-        {
-          role: "system",
-          content:
-            "You are an expert senior-design project advisor. Return concise, compact project ideas. Use clear headings and short bullet points.",
-        },
-        {
-          role: "user",
-          content: [{ type: "input_text", text: prompt }],
-        },
-      ],
-      // Lower output = faster = fewer Netlify timeouts
-      max_output_tokens: 450,
-      temperature: 0.7,
-    };
+//HERE 
 
+  // Force a fast, reliable model for Netlify time limits
+const model = "gpt-4o-mini";
+
+// IMPORTANT: keep prompt size under control (huge prompts slow responses)
+let prompt = String(body.prompt || "").trim();
+if (!prompt) return json(400, { error: { message: "Missing prompt." } });
+
+// Hard cap prompt length to avoid timeouts
+if (prompt.length > 9000) prompt = prompt.slice(0, 9000);
+
+const payload = {
+  model,
+  input: [
+    {
+      role: "system",
+      content:
+        "You are an expert senior-design project advisor. Return concise, compact project ideas. Use clear headings and short bullet points.",
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: prompt }],
+    },
+  ],
+  max_output_tokens: 250,
+  temperature: 0.7,
+};
+  
+   
+
+//HERE 
+
+
+
+    
     // Enforced timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
