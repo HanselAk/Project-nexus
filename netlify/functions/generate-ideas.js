@@ -1,10 +1,7 @@
 // netlify/functions/generate-ideas.js
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
-
-// Netlify Functions often time out if the upstream call is slow.
-// We'll enforce our own timeout so we can return JSON instead of Netlify returning HTML.
-const UPSTREAM_TIMEOUT_MS = 6500 ; // 8s (stay under Netlify kill window)
+const UPSTREAM_TIMEOUT_MS = 9000; // keep under Netlify timeout limits
 
 function json(statusCode, body) {
   return {
@@ -20,7 +17,6 @@ function json(statusCode, body) {
 }
 
 function extractResponseText(data) {
-  // Responses API usually returns text in output[].content[]
   try {
     if (data?.output?.length) {
       const chunks = [];
@@ -33,25 +29,18 @@ function extractResponseText(data) {
       return chunks.join("\n").trim();
     }
   } catch {}
-  // fallback
   if (typeof data?.output_text === "string") return data.output_text.trim();
   return "";
 }
 
 exports.handler = async (event) => {
-  // CORS preflight
   if (event.httpMethod === "OPTIONS") return json(200, { ok: true });
-
-  if (event.httpMethod !== "POST") {
-    return json(405, { error: { message: "Method not allowed. Use POST." } });
-  }
+  if (event.httpMethod !== "POST") return json(405, { error: { message: "Method not allowed. Use POST." } });
 
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return json(500, {
-        error: { message: "API key not configured. Set OPENAI_API_KEY in Netlify environment variables." },
-      });
+      return json(500, { error: { message: "API key not configured. Set OPENAI_API_KEY in Netlify env vars." } });
     }
 
     let body;
@@ -61,46 +50,52 @@ exports.handler = async (event) => {
       return json(400, { error: { message: "Invalid JSON body." } });
     }
 
+    const model = body.model || "gpt-4.1-mini";
+    const count = Number(body.count || 3);
+    let prompt = String(body.prompt || "").trim();
+    if (!prompt) return json(400, { error: { message: "Missing prompt." } });
 
+    if (prompt.length > 12000) prompt = prompt.slice(0, 12000);
 
-
-//HERE 
-
-  // Force a fast, reliable model for Netlify time limits
-const model = "gpt-4o-mini";
-
-// IMPORTANT: keep prompt size under control (huge prompts slow responses)
-let prompt = String(body.prompt || "").trim();
-if (!prompt) return json(400, { error: { message: "Missing prompt." } });
-
-// Hard cap prompt length to avoid timeouts
-if (prompt.length > 9000) prompt = prompt.slice(0, 9000);
-
-const payload = {
-  model,
-  input: [
+    // Force JSON output so your frontend can reliably read timeline/cost/etc.
+    const schemaHint = `
+Return ONLY valid JSON (no markdown, no backticks).
+Shape:
+{
+  "ideas": [
     {
-      role: "system",
-      content:
-        "You are an expert senior-design project advisor. Return concise, compact project ideas. Use clear headings and short bullet points.",
-    },
-    {
-      role: "user",
-      content: [{ type: "input_text", text: prompt }],
-    },
-  ],
-  max_output_tokens: 500,
-  temperature: 0.8,
-};
-  
-   
+      "title": "string",
+      "description": "string (compact, 2-4 sentences)",
+      "key_components": ["string", "..."],
+      "technologies": ["string", "..."],
+      "challenges": ["string", "..."],
+      "unique_value": "string (1-2 sentences)",
+      "est_cost": "string (example: $45-$210)",
+      "timeline": "string (example: Months 1-2 ...)",
+      "image_prompt": "string (a visual prompt, NO text in image)"
+    }
+  ]
+}
+Generate exactly ${count} ideas in the array.
+`;
 
-//HERE 
+    const payload = {
+      model,
+      input: [
+        {
+          role: "system",
+          content:
+            "You are a senior-design project advisor. Be concise. Follow the user's constraints. Output must be strictly valid JSON.",
+        },
+        {
+          role: "user",
+          content: [{ type: "input_text", text: prompt + "\n\n" + schemaHint }],
+        },
+      ],
+      max_output_tokens: 1100, // enough for multiple compact ideas
+      temperature: 0.7,
+    };
 
-
-
-    
-    // Enforced timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
@@ -119,17 +114,13 @@ const payload = {
       clearTimeout(timeout);
     }
 
-    // If OpenAI returns non-JSON for any reason, guard it:
     const text = await resp.text();
     let data;
     try {
       data = JSON.parse(text);
     } catch {
       return json(502, {
-        error: {
-          message: `Upstream returned non-JSON (status ${resp.status}).`,
-          details: text.slice(0, 300),
-        },
+        error: { message: `Upstream returned non-JSON (status ${resp.status}).`, details: text.slice(0, 300) },
       });
     }
 
@@ -139,13 +130,19 @@ const payload = {
     }
 
     const ideasText = extractResponseText(data);
-    if (!ideasText) {
-      return json(500, { error: { message: "OpenAI returned empty text.", details: data } });
+    if (!ideasText) return json(500, { error: { message: "OpenAI returned empty text.", details: data } });
+
+    // Try parse JSON so frontend can render reliably
+    let ideasJson = null;
+    try {
+      ideasJson = JSON.parse(ideasText);
+    } catch {
+      // if model ever violates format, still return the text so you can see it
+      ideasJson = null;
     }
 
-    return json(200, { ideasText, modelUsed: model });
+    return json(200, { ideasText, ideasJson, modelUsed: model });
   } catch (err) {
-    // If we aborted, return a clean JSON error (instead of Netlify HTML timeout)
     const msg =
       err?.name === "AbortError"
         ? "Upstream timed out. Reduce idea count/detail level and try again."
